@@ -1,0 +1,7 @@
+{
+  "name": "CampusAI",
+  "description": "3D College AI Assistant with interactive holographic avatar, student & admin dashboards, RAG college knowledge base, and voice support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
