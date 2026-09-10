@@ -64,4 +64,20 @@ class ExampleUnitTest {
     val updated = faq.copy(answer = "Central Library is open from 8:00 AM to 11:00 PM during exams.")
     assertEquals("Central Library is open from 8:00 AM to 11:00 PM during exams.", updated.answer)
   }
+
+  @Test
+  fun queryPrompt_trimsWhitespaceCorrectly() {
+    val rawPrompt = "   When are Spring 2026 mid-term exams?   "
+    val cleaned = rawPrompt.trim()
+    assertEquals("When are Spring 2026 mid-term exams?", cleaned)
+    assertTrue(cleaned.isNotBlank())
+  }
+
+  @Test
+  fun avatarState_hasCorrectNames() {
+    assertEquals("idle", com.example.ui.AvatarState.IDLE.stateName)
+    assertEquals("listening", com.example.ui.AvatarState.LISTENING.stateName)
+    assertEquals("thinking", com.example.ui.AvatarState.THINKING.stateName)
+    assertEquals("speaking", com.example.ui.AvatarState.SPEAKING.stateName)
+  }
 }

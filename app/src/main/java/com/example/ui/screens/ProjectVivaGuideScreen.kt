@@ -174,7 +174,7 @@ fun ProjectVivaGuideScreen(
             ),
             Pair(
                 "Q2. How is the 3D Hologram Avatar rendered without lagging the main UI?",
-                "Answer: The avatar runs Three.js with hardware acceleration inside an optimized WebView container with a transparent background. A two-way JavaScript bridge (`window.setAvatarState`) updates the 3D shader and geometry asynchronously without blocking the Jetpack Compose render thread."
+                "Answer: The avatar is implemented with a 100% native Jetpack Compose 3D Canvas engine utilizing 3D perspective projection, gyroscopic orbital math, and infinite animations. It runs directly on Android's RenderThread without WebViews, eliminating Chromium disk cache overhead and MESA rendernode conflicts."
             ),
             Pair(
                 "Q3. How is offline resilience handled when network is unavailable?",
