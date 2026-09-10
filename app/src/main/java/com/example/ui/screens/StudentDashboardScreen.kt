@@ -66,6 +66,7 @@ fun StudentDashboardScreen(
     val studentProfile by viewModel.studentProfile.collectAsState()
     val examSchedule by viewModel.examSchedule.collectAsState()
     val notices by viewModel.notices.collectAsState()
+    val campusResources by viewModel.campusResources.collectAsState()
 
     val profile = studentProfile
 
@@ -210,6 +211,49 @@ fun StudentDashboardScreen(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
+                    }
+                }
+            }
+        }
+
+        // Student Institutional Details
+        item {
+            NeonGlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Student Information & Services",
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Hostel Residence:", color = TextMuted, fontSize = 12.sp)
+                        Text(text = profile?.hostelRoom ?: "H-4, Rm 302", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Faculty Mentor:", color = TextMuted, fontSize = 12.sp)
+                        Text(text = profile?.mentor ?: "Dr. Alan Turing", color = NeonCyanLight, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Library Card:", color = TextMuted, fontSize = 12.sp)
+                        Text(text = profile?.libraryCardNo ?: "LIB-2023-CS-089", color = CyberViolet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Emergency Contact:", color = TextMuted, fontSize = 12.sp)
+                        Text(text = profile?.emergencyContact ?: "+1 (555) 901-4422 (Parent)", color = TextSecondary, fontSize = 12.sp)
                     }
                 }
             }
@@ -432,6 +476,83 @@ fun StudentDashboardScreen(
                         Text(
                             text = "Ask CampusAI about this",
                             color = NeonCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+
+        // Campus Resources & Facilities from Room DB
+        item {
+            Text(
+                text = "CAMPUS RESOURCES & FACILITIES",
+                color = TextMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+        }
+
+        items(campusResources) { res ->
+            NeonGlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = res.title,
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(NeonCyan.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = res.category,
+                                color = NeonCyanLight,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "📍 ${res.location}  •  ⏰ ${res.availability}", color = CyberEmerald, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(text = res.description, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(text = "Access: ${res.accessDetails}", color = TextMuted, fontSize = 10.sp)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.navigateTo(AppScreen.CHAT)
+                                viewModel.sendChatMessage("How do I access and use the ${res.title}?")
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QuestionAnswer,
+                            contentDescription = null,
+                            tint = NeonCyanLight,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Ask AI about this resource",
+                            color = NeonCyanLight,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )

@@ -50,27 +50,76 @@ interface CampusDao {
     @Query("SELECT * FROM faqs ORDER BY category")
     fun getAllFaqs(): Flow<List<FaqEntity>>
 
+    @Query("SELECT * FROM faqs WHERE category = :category ORDER BY id ASC")
+    fun getFaqsByCategory(category: String): Flow<List<FaqEntity>>
+
+    @Query("SELECT * FROM faqs WHERE question LIKE '%' || :query || '%' OR keywords LIKE '%' || :query || '%' OR answer LIKE '%' || :query || '%'")
+    fun searchFaqs(query: String): Flow<List<FaqEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFaqs(faqs: List<FaqEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFaq(faq: FaqEntity): Long
 
+    @Update
+    suspend fun updateFaq(faq: FaqEntity)
+
     @Query("DELETE FROM faqs WHERE id = :id")
     suspend fun deleteFaq(id: Int)
 
-    // Student Profile
+    @Query("DELETE FROM faqs")
+    suspend fun clearFaqs()
+
+    // Campus Resources
+    @Query("SELECT * FROM campus_resources ORDER BY category, title")
+    fun getAllCampusResources(): Flow<List<CampusResourceEntity>>
+
+    @Query("SELECT * FROM campus_resources WHERE category = :category ORDER BY title ASC")
+    fun getCampusResourcesByCategory(category: String): Flow<List<CampusResourceEntity>>
+
+    @Query("SELECT * FROM campus_resources WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR location LIKE '%' || :query || '%'")
+    fun searchCampusResources(query: String): Flow<List<CampusResourceEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCampusResources(resources: List<CampusResourceEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCampusResource(resource: CampusResourceEntity): Long
+
+    @Update
+    suspend fun updateCampusResource(resource: CampusResourceEntity)
+
+    @Query("DELETE FROM campus_resources WHERE id = :id")
+    suspend fun deleteCampusResource(id: Int)
+
+    @Query("DELETE FROM campus_resources")
+    suspend fun clearCampusResources()
+
+    // Student Information & Profile
     @Query("SELECT * FROM student_profile LIMIT 1")
     fun getStudentProfile(): Flow<StudentProfileEntity?>
 
     @Query("SELECT * FROM student_profile LIMIT 1")
     suspend fun getStudentProfileSnapshot(): StudentProfileEntity?
 
+    @Query("SELECT * FROM student_profile WHERE rollNo = :rollNo LIMIT 1")
+    fun getStudentByRollNo(rollNo: String): Flow<StudentProfileEntity?>
+
+    @Query("SELECT * FROM student_profile ORDER BY rollNo ASC")
+    fun getAllStudents(): Flow<List<StudentProfileEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStudentProfile(profile: StudentProfileEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStudents(students: List<StudentProfileEntity>)
+
     @Update
     suspend fun updateStudentProfile(profile: StudentProfileEntity)
+
+    @Query("DELETE FROM student_profile WHERE rollNo = :rollNo")
+    suspend fun deleteStudentProfile(rollNo: String)
 
     // Exam Schedule
     @Query("SELECT * FROM exam_schedule ORDER BY date ASC")
@@ -115,6 +164,9 @@ interface CampusDao {
 
     @Query("SELECT * FROM faqs")
     suspend fun getFaqsSnapshot(): List<FaqEntity>
+
+    @Query("SELECT * FROM campus_resources")
+    suspend fun getCampusResourcesSnapshot(): List<CampusResourceEntity>
 
     @Query("SELECT * FROM facilities")
     suspend fun getFacilitiesSnapshot(): List<CollegeFacilityEntity>

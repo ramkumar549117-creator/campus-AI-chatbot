@@ -12,10 +12,12 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.CampusDatabase
+import com.example.data.local.CampusResourceEntity
 import com.example.data.local.CollegeNoticeEntity
 import com.example.data.local.CourseEntity
 import com.example.data.local.FacultyEntity
 import com.example.data.local.FaqEntity
+import com.example.data.local.StudentProfileEntity
 import com.example.data.repository.CampusRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -92,6 +94,7 @@ class CampusViewModel(application: Application) : AndroidViewModel(application) 
     val courses = MutableStateFlow<List<CourseEntity>>(emptyList())
     val faculty = MutableStateFlow<List<FacultyEntity>>(emptyList())
     val faqs = MutableStateFlow<List<FaqEntity>>(emptyList())
+    val campusResources = MutableStateFlow<List<CampusResourceEntity>>(emptyList())
 
     val chatMessages = repositoryFlowWrapper()
 
@@ -120,6 +123,9 @@ class CampusViewModel(application: Application) : AndroidViewModel(application) 
         }
         viewModelScope.launch {
             repository.allFaqs.collect { faqs.value = it }
+        }
+        viewModelScope.launch {
+            repository.allCampusResources.collect { campusResources.value = it }
         }
 
         initTTS(application)
@@ -426,9 +432,83 @@ class CampusViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateFaq(id: Int, question: String, answer: String, category: String, keywords: String) {
+        viewModelScope.launch {
+            val faq = FaqEntity(
+                id = id,
+                question = question,
+                answer = answer,
+                category = category,
+                keywords = keywords.lowercase(Locale.ROOT)
+            )
+            repository.updateFaq(faq)
+        }
+    }
+
     fun removeFaq(id: Int) {
         viewModelScope.launch {
             repository.deleteFaq(id)
+        }
+    }
+
+    fun createCampusResource(
+        title: String,
+        category: String,
+        location: String,
+        availability: String,
+        accessDetails: String,
+        contactInfo: String,
+        description: String,
+        iconType: String = "default"
+    ) {
+        viewModelScope.launch {
+            val res = CampusResourceEntity(
+                title = title,
+                category = category,
+                location = location,
+                availability = availability,
+                accessDetails = accessDetails,
+                contactInfo = contactInfo,
+                description = description,
+                iconType = iconType
+            )
+            repository.addCampusResource(res)
+        }
+    }
+
+    fun removeCampusResource(id: Int) {
+        viewModelScope.launch {
+            repository.deleteCampusResource(id)
+        }
+    }
+
+    fun updateStudentProfile(
+        name: String,
+        email: String,
+        phone: String,
+        department: String,
+        semester: String,
+        cgpa: Double,
+        attendancePct: Int,
+        feeDues: String,
+        hostelRoom: String,
+        mentor: String
+    ) {
+        viewModelScope.launch {
+            val current = studentProfile.value ?: StudentProfileEntity()
+            val updated = current.copy(
+                name = name,
+                email = email,
+                phone = phone,
+                department = department,
+                semester = semester,
+                cgpa = cgpa,
+                attendancePct = attendancePct,
+                feeDues = feeDues,
+                hostelRoom = hostelRoom,
+                mentor = mentor
+            )
+            repository.updateStudentProfile(updated)
         }
     }
 

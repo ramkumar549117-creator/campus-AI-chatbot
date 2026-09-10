@@ -11,13 +11,14 @@ import androidx.room.RoomDatabase
         CourseEntity::class,
         FacultyEntity::class,
         FaqEntity::class,
+        CampusResourceEntity::class,
         StudentProfileEntity::class,
         ExamScheduleEntity::class,
         PlacementStatEntity::class,
         ChatMessageEntity::class,
         CollegeFacilityEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class CampusDatabase : RoomDatabase() {

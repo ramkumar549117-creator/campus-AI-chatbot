@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import android.util.Log
 import com.example.data.local.CampusDao
+import com.example.data.local.CampusResourceEntity
 import com.example.data.local.ChatMessageEntity
 import com.example.data.local.CollegeNoticeEntity
 import com.example.data.local.CourseEntity
@@ -21,23 +22,26 @@ import java.util.Locale
 class CampusRepository(private val dao: CampusDao) {
 
     private val tag = "CampusRepository"
+    val geminiRagRepository = GeminiRagRepository(dao)
 
     // Reactive streams
     val allNotices: Flow<List<CollegeNoticeEntity>> = dao.getAllNotices()
     val allCourses: Flow<List<CourseEntity>> = dao.getAllCourses()
     val allFaculty: Flow<List<FacultyEntity>> = dao.getAllFaculty()
     val allFaqs: Flow<List<FaqEntity>> = dao.getAllFaqs()
+    val allCampusResources: Flow<List<CampusResourceEntity>> = dao.getAllCampusResources()
     val allFacilities = dao.getAllFacilities()
     val examSchedule: Flow<List<ExamScheduleEntity>> = dao.getExamSchedule()
     val placementStats: Flow<List<PlacementStatEntity>> = dao.getPlacementStats()
     val studentProfile: Flow<StudentProfileEntity?> = dao.getStudentProfile()
+    val allStudents: Flow<List<StudentProfileEntity>> = dao.getAllStudents()
     val chatMessages: Flow<List<ChatMessageEntity>> = dao.getAllChatMessages()
 
     suspend fun initializeData() {
         InitialDataSeeder.seedDatabaseIfEmpty(dao)
     }
 
-    // Admin operations
+    // Admin & Knowledge Base operations
     suspend fun addNotice(notice: CollegeNoticeEntity) = dao.insertNotice(notice)
     suspend fun deleteNotice(id: Int) = dao.deleteNotice(id)
 
@@ -48,7 +52,15 @@ class CampusRepository(private val dao: CampusDao) {
     suspend fun deleteFaculty(id: Int) = dao.deleteFaculty(id)
 
     suspend fun addFaq(faq: FaqEntity) = dao.insertFaq(faq)
+    suspend fun updateFaq(faq: FaqEntity) = dao.updateFaq(faq)
     suspend fun deleteFaq(id: Int) = dao.deleteFaq(id)
+
+    suspend fun addCampusResource(resource: CampusResourceEntity) = dao.insertCampusResource(resource)
+    suspend fun updateCampusResource(resource: CampusResourceEntity) = dao.updateCampusResource(resource)
+    suspend fun deleteCampusResource(id: Int) = dao.deleteCampusResource(id)
+
+    suspend fun updateStudentProfile(profile: StudentProfileEntity) = dao.updateStudentProfile(profile)
+    suspend fun insertStudentProfile(profile: StudentProfileEntity) = dao.insertStudentProfile(profile)
 
     suspend fun clearChat() = dao.clearChatHistory()
 
@@ -70,46 +82,33 @@ class CampusRepository(private val dao: CampusDao) {
         )
         dao.insertChatMessage(userMsg)
 
-        val cleanQuery = prompt.lowercase(Locale.ROOT)
+        // Retrieve recent chat history for conversation continuity
+        val recentMessages = dao.getAllChatMessages().firstOrNull() ?: emptyList()
+        val history = recentMessages.takeLast(6).map { it.sender to it.text }
 
-        // Step 1: Retrieve RAG Knowledge Base Context
-        val (contextString, matchedSources) = buildRagContext(cleanQuery)
+        // Process through Retrofit-backed Gemini RAG repository
+        val ragResult = geminiRagRepository.processRagQuery(
+            userPrompt = prompt,
+            chatHistory = history
+        )
 
-        var finalAnswer: String
-        var usedEngine = "Offline Knowledge Base"
-
-        // Step 2: Query Gemini AI if API key configured
-        if (GeminiClient.hasValidApiKey()) {
-            try {
-                // Get recent chat history for multi-turn awareness
-                val recentMessages = dao.getAllChatMessages().firstOrNull() ?: emptyList()
-                val history = recentMessages.takeLast(6).map { it.sender to it.text }
-
-                val geminiResponse = GeminiClient.generateRagResponse(
-                    userPrompt = prompt,
-                    collegeContext = contextString,
-                    chatHistory = history
-                )
-                finalAnswer = geminiResponse
-                usedEngine = "Gemini AI + College RAG"
-            } catch (e: Exception) {
-                Log.w(tag, "Gemini call failed (${e.message}), using smart offline knowledge base.")
-                finalAnswer = generateOfflineRagResponse(cleanQuery)
-            }
+        val sourcesText = if (ragResult.matchedSources.isNotEmpty()) {
+            ragResult.matchedSources.joinToString(" • ")
+        } else if (ragResult.isOnlineAi) {
+            "Gemini AI (${ragResult.modelUsed ?: "gemini-3.5-flash"}) + College Knowledge Base"
         } else {
-            // Offline smart knowledge base matching
-            finalAnswer = generateOfflineRagResponse(cleanQuery)
+            "Offline College Knowledge Base"
         }
 
         // Save AI response to database
         val aiMsg = ChatMessageEntity(
             sender = "ai",
-            text = finalAnswer,
-            sources = matchedSources.ifEmpty { usedEngine }
+            text = ragResult.answer,
+            sources = sourcesText
         )
         dao.insertChatMessage(aiMsg)
 
-        return@withContext finalAnswer
+        return@withContext ragResult.answer
     }
 
     private suspend fun buildRagContext(query: String): Pair<String, String> {
@@ -221,9 +220,30 @@ class CampusRepository(private val dao: CampusDao) {
             sourcesList.add("College FAQ Database")
         }
 
-        // 8. Facilities
-        if (query.contains("library") || query.contains("hostel") || query.contains("mess") || query.contains("sports") || query.contains("canteen") || query.contains("cafeteria")) {
-            sb.appendLine("CAMPUS FACILITIES:")
+        // 8. Facilities & Campus Resources
+        val resources = dao.getCampusResourcesSnapshot()
+        val matchedResources = resources.filter { r ->
+            query.contains("resource") || query.contains("portal") || query.contains("lab") ||
+                    query.contains("hpc") || query.contains("gpu") || query.contains("transit") ||
+                    query.contains("shuttle") || query.contains("bus") || query.contains("health") ||
+                    query.contains("clinic") || query.contains("counseling") || query.contains("doctor") ||
+                    query.contains("maker") || query.contains("3d") || query.contains("sports") ||
+                    query.contains("gym") || query.contains("pool") ||
+                    query.contains(r.title.lowercase(Locale.ROOT)) ||
+                    query.contains(r.category.lowercase(Locale.ROOT))
+        }
+        if (matchedResources.isNotEmpty() || query.contains("resource")) {
+            sb.appendLine("CAMPUS RESOURCES & FACILITIES:")
+            val resList = if (matchedResources.isNotEmpty()) matchedResources else resources
+            resList.forEach { r ->
+                sb.appendLine("• ${r.title} (${r.category}): Location: ${r.location}, Availability: ${r.availability}, Access: ${r.accessDetails}, Contact: ${r.contactInfo}. Info: ${r.description}")
+            }
+            sb.appendLine()
+            sourcesList.add("Campus Resources & Services")
+        }
+
+        if (query.contains("facility") || query.contains("facilities") || query.contains("canteen") || query.contains("cafeteria")) {
+            sb.appendLine("ADDITIONAL CAMPUS FACILITIES:")
             facilities.forEach { fc ->
                 sb.appendLine("• ${fc.name} (${fc.category}): Location: ${fc.location}, Timings: ${fc.timings}, Rules: ${fc.rules}")
             }
@@ -242,6 +262,7 @@ class CampusRepository(private val dao: CampusDao) {
         val courses = dao.getCoursesSnapshot()
         val faculty = dao.getFacultySnapshot()
         val faqs = dao.getFaqsSnapshot()
+        val resources = dao.getCampusResourcesSnapshot()
         val exams = dao.getExamScheduleSnapshot()
         val placements = dao.getPlacementStatsSnapshot()
         val student = dao.getStudentProfile().firstOrNull()
@@ -313,6 +334,22 @@ class CampusRepository(private val dao: CampusDao) {
             return "Here are key faculty members and advisors:\n\n$list"
         }
 
+        // Check for campus resources & services
+        val matchedResource = resources.firstOrNull { r ->
+            val t = r.title.lowercase(Locale.ROOT)
+            val c = r.category.lowercase(Locale.ROOT)
+            query.contains(t) ||
+                    (query.contains("shuttle") || query.contains("transit") || query.contains("bus")) && c.contains("transport") ||
+                    (query.contains("gpu") || query.contains("hpc") || query.contains("cluster")) && c.contains("computing") ||
+                    (query.contains("health") || query.contains("doctor") || query.contains("clinic") || query.contains("wellness") || query.contains("counseling")) && c.contains("health") ||
+                    (query.contains("maker") || query.contains("3d print") || query.contains("prototype")) && c.contains("computing") ||
+                    (query.contains("sport") || query.contains("pool") || query.contains("swim") || query.contains("badminton") || query.contains("court")) && c.contains("sports") ||
+                    (query.contains("ieee") || query.contains("acm") || query.contains("journal") || query.contains("digital library")) && c.contains("digital")
+        }
+        if (matchedResource != null) {
+            return "🏛️ **${matchedResource.title}** (${matchedResource.category})\n\n• **Location**: ${matchedResource.location}\n• **Availability**: ${matchedResource.availability}\n• **Access Details**: ${matchedResource.accessDetails}\n• **Contact & Inquiries**: ${matchedResource.contactInfo}\n\n${matchedResource.description}\n\n*(Source: Institutional Campus Resources Database)*"
+        }
+
         // Check FAQ matching
         val faqMatch = faqs.firstOrNull { faq ->
             val words = query.split(" ").filter { it.length > 3 }
@@ -322,6 +359,6 @@ class CampusRepository(private val dao: CampusDao) {
             return "${faqMatch.answer}\n\n*(Source: Official College Knowledge Base - ${faqMatch.category} Section)*"
         }
 
-        return "I am your CampusAI 3D holographic college assistant. You can ask me about:\n\n• **Academic Programs**: Courses, eligibility, and annual fee structures\n• **Exams & Timetables**: Mid-term dates, hall tickets, and test venues\n• **Notices & Circulars**: Tech fest 'Innovate 2026', deadlines, and events\n• **Student Records**: Your personal attendance, CGPA, and mentor details\n• **Placements**: Recruiters, packages, and eligibility criteria\n• **Campus Amenities**: Central library timings, hostel rules, and sports pavilion."
+        return "I am your CampusAI 3D holographic college assistant. You can ask me about:\n\n• **Campus Resources**: Digital libraries, GPU clusters, shuttle buses, and health center\n• **Academic Programs**: Courses, eligibility, and annual fee structures\n• **Exams & Timetables**: Mid-term dates, hall tickets, and test venues\n• **Notices & Circulars**: Tech fest 'Innovate 2026', deadlines, and events\n• **Student Records**: Your personal attendance, CGPA, and mentor details\n• **Placements**: Recruiters, packages, and eligibility criteria\n• **Institutional FAQs**: Admissions, hostels, library borrowing, and policies."
     }
 }

@@ -66,6 +66,12 @@ object InitialDataSeeder {
                     dao.insertNotice(notice.copy(content = updated))
                 }
             }
+
+            // Ensure campus_resources table is populated even on existing databases
+            if (dao.getCampusResourcesSnapshot().isEmpty()) {
+                seedCampusResources(dao)
+            }
+
             return@withContext
         }
 
@@ -75,13 +81,19 @@ object InitialDataSeeder {
                 rollNo = "CS2023089",
                 name = "Alex Rivera",
                 email = "alex.rivera@campus.edu",
+                phone = "+91 98765 43210",
                 department = "Computer Science & Engineering",
                 semester = "6th Semester",
+                batchYear = "2023-2027",
                 cgpa = 8.84,
                 attendancePct = 85,
                 feeDues = "Cleared (₹0)",
                 hostelRoom = "Block B - Room 304",
-                mentor = "Dr. Sarah Mitchell (Cabin CS-204)"
+                mentor = "Dr. Sarah Mitchell (Cabin CS-204)",
+                bloodGroup = "O+",
+                emergencyContact = "+91 98765 01234 (Guardian)",
+                libraryCardNo = "LIB-CS-2023-089",
+                enrolledCoursesCount = 6
             )
         )
 
@@ -396,13 +408,92 @@ object InitialDataSeeder {
         )
         dao.insertFacilities(facilities)
 
-        // 9. Initial Greeting Message from AI
+        // 9. Seed Campus Resources
+        seedCampusResources(dao)
+
+        // 10. Initial Greeting Message from AI
         dao.insertChatMessage(
             ChatMessageEntity(
                 sender = "ai",
-                text = "Hello Alex! I am CampusAI, your 3D holographic college assistant. How can I help you today with courses, notices, exam timetable, attendance, or fees?",
+                text = "Hello Alex! I am CampusAI, your 3D holographic college assistant. How can I help you today with courses, notices, campus resources, exam timetable, attendance, or fees?",
                 sources = "Campus Knowledge Base"
             )
         )
+    }
+
+    suspend fun seedCampusResources(dao: CampusDao) {
+        val resources = listOf(
+            CampusResourceEntity(
+                title = "IEEE Xplore & ACM Digital Library Portal",
+                category = "Digital & Library",
+                location = "Online Campus Intranet & Knowledge Tower 2nd Floor",
+                availability = "24/7 Remote Access via SSO / In-person: 8:00 AM - 10:00 PM",
+                accessDetails = "Institutional access active for all enrolled students using student email credentials",
+                contactInfo = "library-digital@campus.edu | +91 98765 11001",
+                description = "Over 5 million full-text IEEE/ACM research journals, conference proceedings, technical standards, and academic e-books.",
+                iconType = "library"
+            ),
+            CampusResourceEntity(
+                title = "NVIDIA AI & GPU High-Performance Computing Cluster",
+                category = "Research & Computing",
+                location = "Alan Turing Computational Center, Lab 401",
+                availability = "Mon-Sat: 8:00 AM - 11:00 PM (Batch compute queue runs 24/7)",
+                accessDetails = "Submit compute token requests through Faculty Supervisor or Department Portal",
+                contactInfo = "hpc-admin@campus.edu | +91 98765 11002",
+                description = "8x NVIDIA A100 GPUs with 640GB VRAM high-throughput cluster for deep learning, NLP research, and vision model training.",
+                iconType = "lab"
+            ),
+            CampusResourceEntity(
+                title = "Campus Transit & Green Shuttle Service",
+                category = "Transport & Commute",
+                location = "Main Gate, Academic Block A, North Hostels, Sports Complex",
+                availability = "Every 15 mins from 7:00 AM to 10:30 PM daily",
+                accessDetails = "Free eco-friendly electric shuttles for students, faculty, and verified campus visitors",
+                contactInfo = "transit-ops@campus.edu | +91 98765 11003",
+                description = "Regular campus loop and metro connection buses covering all 4 campus zones and student residential hostels.",
+                iconType = "bus"
+            ),
+            CampusResourceEntity(
+                title = "Student Health Center & Mental Wellness Clinic",
+                category = "Health & Wellness",
+                location = "Wellness Pavilion, Ground Floor (Near Health Center Gate)",
+                availability = "OPD: 8:00 AM - 8:00 PM | Emergency & Ambulance: 24/7 On-Call",
+                accessDetails = "Free outpatient consultations, basic pharmacy dispensations, and confidential counseling for all students",
+                contactInfo = "emergency-health@campus.edu | +91 98765 11004",
+                description = "Full-time resident medical officer, 24/7 ambulance service, emergency first-aid, and certified confidential student counselors.",
+                iconType = "health"
+            ),
+            CampusResourceEntity(
+                title = "Makerspace & 3D Additive Manufacturing Lab",
+                category = "Research & Computing",
+                location = "Innovation & Incubation Hub, Room 102",
+                availability = "Mon-Fri: 9:00 AM - 9:00 PM, Sat: 9:00 AM - 5:00 PM",
+                accessDetails = "Safety orientation required prior to operating laser cutters and 3D printing equipment",
+                contactInfo = "makerspace@campus.edu | +91 98765 11005",
+                description = "Equipped with 12 FDM 3D printers, SLA resin printer, laser CNC cutter, PCB milling machine, and soldering stations.",
+                iconType = "lab"
+            ),
+            CampusResourceEntity(
+                title = "Career Development & Placement Cell (CDC)",
+                category = "Student Services",
+                location = "Administrative Block, 3rd Floor, Suite 310",
+                availability = "Mon-Fri: 9:00 AM - 6:00 PM",
+                accessDetails = "Resume reviews, mock technical interviews, and placement drive registration via CDC Portal",
+                contactInfo = "placements@campus.edu | +91 98765 11006",
+                description = "Coordinates campus recruiting drives, resume workshops, corporate internships, and competitive examination coaching.",
+                iconType = "counseling"
+            ),
+            CampusResourceEntity(
+                title = "Olympic-Size Aquatic & Sports Complex",
+                category = "Sports & Fitness",
+                location = "South Campus Athletic Zone",
+                availability = "Morning: 6:00 AM - 9:30 AM | Evening: 4:30 PM - 9:00 PM",
+                accessDetails = "Student ID card tap at turnstiles. Proper sports attire and footwear mandatory.",
+                contactInfo = "sports-desk@campus.edu | +91 98765 11007",
+                description = "50-meter heated swimming pool, 4 wooden indoor badminton courts, gym with trainers, and outdoor synthetic turf.",
+                iconType = "sports"
+            )
+        )
+        dao.insertCampusResources(resources)
     }
 }
