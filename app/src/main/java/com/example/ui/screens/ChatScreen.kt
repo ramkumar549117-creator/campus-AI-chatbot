@@ -1,9 +1,16 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -45,12 +52,14 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -86,10 +95,15 @@ import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.UserBubble
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun ChatScreen(
     viewModel: CampusViewModel,
@@ -102,10 +116,70 @@ fun ChatScreen(
     val avatarState by viewModel.avatarState.collectAsState()
     val isVoiceListening by viewModel.isVoiceListening.collectAsState()
     val isSpeakingAudio by viewModel.isSpeakingAudio.collectAsState()
+    val voiceStatusMessage by viewModel.voiceStatusMessage.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
 
     var showAvatar by remember { mutableStateOf(true) }
     var isSearching by remember { mutableStateOf(false) }
+    var showPermissionRationaleDialog by remember { mutableStateOf(false) }
+
+    // Speech Intent Fallback Launcher
+    val speechIntentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenMatches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val spokenText = spokenMatches?.firstOrNull()?.trim()
+            if (!spokenText.isNullOrBlank()) {
+                viewModel.onVoiceSpeechResult(spokenText)
+            }
+        }
+    }
+
+    // Launch system speech recognition intent dialog
+    fun launchSpeechIntent() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask CampusAI anything about the college...")
+        }
+        try {
+            speechIntentLauncher.launch(intent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "Voice recognition service is not available", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Accompanist Permissions for Microphone
+    val micPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO) { isGranted ->
+        if (isGranted) {
+            if (SpeechRecognizer.isRecognitionAvailable(context)) {
+                viewModel.startVoiceRecognition(context)
+            } else {
+                launchSpeechIntent()
+            }
+        } else {
+            Toast.makeText(context, "Microphone permission is required for voice queries", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun handleMicClick() {
+        if (isVoiceListening) {
+            viewModel.stopVoiceRecognition()
+        } else {
+            if (micPermissionState.status.isGranted) {
+                if (SpeechRecognizer.isRecognitionAvailable(context)) {
+                    viewModel.startVoiceRecognition(context)
+                } else {
+                    launchSpeechIntent()
+                }
+            } else if (micPermissionState.status.shouldShowRationale) {
+                showPermissionRationaleDialog = true
+            } else {
+                micPermissionState.launchPermissionRequest()
+            }
+        }
+    }
 
     val listState = rememberLazyListState()
 
@@ -122,6 +196,44 @@ fun ChatScreen(
         } else {
             chatMessages.filter { it.text.contains(searchQuery, ignoreCase = true) }
         }
+    }
+
+    // Microphone Permission Rationale Dialog
+    if (showPermissionRationaleDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionRationaleDialog = false },
+            title = {
+                Text(
+                    text = "Microphone Permission Required",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "CampusAI uses your microphone to transcribe your voice inquiries about college admissions, courses, fees, placements, and facilities hands-free.",
+                    color = TextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionRationaleDialog = false
+                        micPermissionState.launchPermissionRequest()
+                    }
+                ) {
+                    Text("Allow Access", color = NeonCyan, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionRationaleDialog = false }) {
+                    Text("Not Now", color = TextMuted)
+                }
+            },
+            containerColor = CyberCardDark
+        )
     }
 
     Column(
@@ -350,6 +462,64 @@ fun ChatScreen(
             }
         }
 
+        // Realtime Voice Status & Feedback Banner
+        AnimatedVisibility(
+            visible = isVoiceListening || voiceStatusMessage != null,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CyberSurfaceDark)
+                    .border(1.dp, if (isVoiceListening) CyberPink else CyberCardBorder)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (isVoiceListening) Icons.Default.Mic else Icons.Default.SmartToy,
+                    contentDescription = null,
+                    tint = if (isVoiceListening) CyberPink else NeonCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = voiceStatusMessage ?: "Listening... Ask about courses, fees, placements or hostels",
+                    color = if (isVoiceListening) CyberPink else TextSecondary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                if (isVoiceListening) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(CyberPink.copy(alpha = 0.2f))
+                            .border(1.dp, CyberPink, RoundedCornerShape(6.dp))
+                            .clickable { viewModel.stopVoiceRecognition() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "STOP",
+                            color = CyberPink,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss Status",
+                        tint = TextMuted,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clickable { viewModel.dismissVoiceStatus() }
+                    )
+                }
+            }
+        }
+
         // Bottom Input Toolbar
         Row(
             modifier = Modifier
@@ -358,19 +528,19 @@ fun ChatScreen(
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Microphone Button
+            // Microphone Button with Permission & Speech Recognition
             Box(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(if (isVoiceListening) CyberPink else CyberCardDark)
                     .border(1.dp, if (isVoiceListening) CyberPink else CyberCardBorder, CircleShape)
-                    .clickable { viewModel.toggleVoiceRecognition(context) },
+                    .clickable { handleMicClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = if (isVoiceListening) Icons.Default.MicOff else Icons.Default.Mic,
-                    contentDescription = "Voice Input",
+                    contentDescription = if (isVoiceListening) "Stop Listening" else "Voice Input",
                     tint = if (isVoiceListening) Color.White else NeonCyan,
                     modifier = Modifier.size(20.dp)
                 )

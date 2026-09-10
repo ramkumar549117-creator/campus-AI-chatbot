@@ -77,6 +77,9 @@ class CampusViewModel(application: Application) : AndroidViewModel(application) 
     private val _speechRmsLevel = MutableStateFlow(0f)
     val speechRmsLevel: StateFlow<Float> = _speechRmsLevel.asStateFlow()
 
+    private val _voiceStatusMessage = MutableStateFlow<String?>(null)
+    val voiceStatusMessage: StateFlow<String?> = _voiceStatusMessage.asStateFlow()
+
     // Admin state
     private val _isAdminLoggedIn = MutableStateFlow(false)
     val isAdminLoggedIn: StateFlow<Boolean> = _isAdminLoggedIn.asStateFlow()
@@ -227,57 +230,104 @@ class CampusViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun startVoiceRecognition(context: Context) {
+    fun startVoiceRecognition(context: Context) {
         stopAudioSpeech()
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
             _isVoiceListening.value = true
             _avatarState.value = AvatarState.LISTENING
+            _voiceStatusMessage.value = "Listening... Speak your question now"
 
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
-                    override fun onRmsChanged(rmsdB: Float) {
-                        _speechRmsLevel.value = (rmsdB + 2f).coerceAtLeast(0f)
-                    }
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() {
-                        _isVoiceListening.value = false
-                    }
-                    override fun onError(error: Int) {
-                        _isVoiceListening.value = false
-                        _avatarState.value = AvatarState.IDLE
-                    }
-                    override fun onResults(results: Bundle?) {
-                        _isVoiceListening.value = false
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val text = matches?.firstOrNull()
-                        if (!text.isNullOrBlank()) {
-                            sendChatMessage(text, isVoice = true)
-                        } else {
-                            _avatarState.value = AvatarState.IDLE
+            try {
+                speechRecognizer?.destroy()
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                    setRecognitionListener(object : RecognitionListener {
+                        override fun onReadyForSpeech(params: Bundle?) {
+                            _voiceStatusMessage.value = "Microphone ready, listening..."
                         }
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) {}
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
-            }
+                        override fun onBeginningOfSpeech() {
+                            _voiceStatusMessage.value = "Capturing speech..."
+                        }
+                        override fun onRmsChanged(rmsdB: Float) {
+                            _speechRmsLevel.value = (rmsdB + 2f).coerceAtLeast(0f)
+                        }
+                        override fun onBufferReceived(buffer: ByteArray?) {}
+                        override fun onEndOfSpeech() {
+                            _isVoiceListening.value = false
+                            _voiceStatusMessage.value = "Processing your query..."
+                        }
+                        override fun onError(error: Int) {
+                            _isVoiceListening.value = false
+                            _avatarState.value = AvatarState.IDLE
+                            val errorText = when (error) {
+                                SpeechRecognizer.ERROR_NO_MATCH -> "No speech recognized. Tap mic to retry."
+                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected. Tap mic to retry."
+                                SpeechRecognizer.ERROR_AUDIO -> "Audio recording error. Check microphone."
+                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
+                                SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network issue while recognizing speech."
+                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer is busy. Please wait a moment."
+                                else -> "Speech recognition ended. Tap mic to speak again."
+                            }
+                            _voiceStatusMessage.value = errorText
+                        }
+                        override fun onResults(results: Bundle?) {
+                            _isVoiceListening.value = false
+                            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            val text = matches?.firstOrNull()?.trim()
+                            if (!text.isNullOrBlank()) {
+                                _voiceStatusMessage.value = "Recognized: \"$text\""
+                                sendChatMessage(text, isVoice = true)
+                            } else {
+                                _voiceStatusMessage.value = "No speech detected. Tap mic to retry."
+                                _avatarState.value = AvatarState.IDLE
+                            }
+                        }
+                        override fun onPartialResults(partialResults: Bundle?) {
+                            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            val partialText = matches?.firstOrNull()
+                            if (!partialText.isNullOrBlank()) {
+                                _voiceStatusMessage.value = "Hearing: \"$partialText\"..."
+                            }
+                        }
+                        override fun onEvent(eventType: Int, params: Bundle?) {}
+                    })
+                }
 
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "CampusAI is listening to your question...")
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "CampusAI is listening to your question...")
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                }
+                speechRecognizer?.startListening(intent)
+            } catch (e: Exception) {
+                _isVoiceListening.value = false
+                _avatarState.value = AvatarState.IDLE
+                _voiceStatusMessage.value = "Could not initialize voice recognizer: ${e.message}"
             }
-            speechRecognizer?.startListening(intent)
         } else {
             _isVoiceListening.value = false
             _avatarState.value = AvatarState.IDLE
+            _voiceStatusMessage.value = "Speech recognition service is not available on this device. Use text input or speech dialog."
         }
     }
 
+    fun onVoiceSpeechResult(recognizedText: String) {
+        val clean = recognizedText.trim()
+        if (clean.isNotBlank()) {
+            _voiceStatusMessage.value = "Recognized: \"$clean\""
+            sendChatMessage(clean, isVoice = true)
+        }
+    }
+
+    fun dismissVoiceStatus() {
+        _voiceStatusMessage.value = null
+    }
+
     fun stopVoiceRecognition() {
-        speechRecognizer?.stopListening()
-        speechRecognizer?.destroy()
+        try {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
         speechRecognizer = null
         _isVoiceListening.value = false
         _avatarState.value = AvatarState.IDLE
